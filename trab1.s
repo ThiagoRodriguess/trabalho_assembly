@@ -752,7 +752,7 @@ argmax_loop:
     add t1, s0, t0          # Endereço vec[i]
     lb t5, 0(t1)            # vec[i]
     
-    ble t5, t4, next_iter   # vec[i] <= max_val
+    blt t5, t4, next_iter   # vec[i] < max_val
     
     mv t3, t0               # max_idx = i
     mv t4, t5               # max_val = vec[i]

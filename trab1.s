@@ -82,10 +82,10 @@ forward_done:
     lw ra, 0(sp)
     lw s0, 4(sp)
     addi sp, sp, 8
-    ret# ============================================
+    ret
 # find_argmax: Encontra índice do maior valor
 # ============================================
-fin# IrisNet - Implementação de Rede Neural em Assembly RISC-V
+# IrisNet - Implementação de Rede Neural em Assembly RISC-V
 # Autor: Implementação para MC404
 # Descrição: Inferência de rede neural para classificação do dataset Iris
 
@@ -520,72 +520,6 @@ parse_input_done:
     addi sp, sp, 12
     ret
 
-# ============================================
-# forward_pass: Executa inferência da rede
-# ============================================
-forward_pass:
-    addi sp, sp, -8
-    sw ra, 0(sp)
-    sw s0, 4(sp)
-    
-    # Obtém número de camadas
-    la t0, num_layers
-    lw s0, 0(t0)
-    
-    # Processa camada 1: activation_0 -> activation_1
-    la a0, activation_0      # Entrada
-    la a1, weights_l1        # Pesos
-    la a2, activation_1      # Saída
-    la t0, layer_sizes
-    lw a3, 0(t0)            # Tamanho entrada
-    lw a4, 4(t0)            # Tamanho saída
-    jal ra, matrix_multiply
-    
-    # Aplica ReLU na activation_1
-    la a0, activation_1
-    la t0, layer_sizes
-    lw a1, 4(t0)
-    jal ra, apply_relu
-    
-    # Se só tem 2 valores na arquitetura (1 transição), para aqui
-    li t0, 2
-    beq s0, t0, forward_done
-    
-    # Processa camada 2: activation_1 -> activation_2
-    la a0, activation_1
-    la a1, weights_l2
-    la a2, activation_2
-    la t0, layer_sizes
-    lw a3, 4(t0)
-    lw a4, 8(t0)
-    jal ra, matrix_multiply
-    
-    # Aplica ReLU na activation_2
-    la a0, activation_2
-    la t0, layer_sizes
-    lw a1, 8(t0)
-    jal ra, apply_relu
-    
-    # Se tem 3 valores na arquitetura (2 transições), para aqui
-    li t0, 3
-    beq s0, t0, forward_done
-    
-    # Processa camada 3: activation_2 -> activation_3
-    la a0, activation_2
-    la a1, weights_l3
-    la a2, activation_3
-    la t0, layer_sizes
-    lw a3, 8(t0)
-    lw a4, 12(t0)
-    jal ra, matrix_multiply
-    
-    # NÃO aplica ReLU na última camada
-    
-forward_done:
-    lw ra, 0(sp)
-    lw s0, 4(sp)
-    addi sp, sp, 8
-    ret
 
 # ============================================
 # matrix_multiply: Multiplicação matriz-vetor

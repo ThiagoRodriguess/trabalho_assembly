@@ -82,10 +82,10 @@ forward_done:
     lw ra, 0(sp)
     lw s0, 4(sp)
     addi sp, sp, 8
-    ret# ============================================
+    ret
 # find_argmax: Encontra índice do maior valor
 # ============================================
-fin# IrisNet - Implementação de Rede Neural em Assembly RISC-V
+# IrisNet - Implementação de Rede Neural em Assembly RISC-V
 # Autor: Implementação para MC404
 # Descrição: Inferência de rede neural para classificação do dataset Iris
 
@@ -402,22 +402,36 @@ parse_weight:
     # Parse número (pode ser negativo)
     li t0, 0                # Acumulador
     li t2, 0                # Flag negativo
-    
-    # Verifica sinal negativo
+
+skip_ws_pw:
     lb t1, 0(s0)
-    li t3, 45              # '-' = 45
+    li t3, 32              # ' '
+    beq t1, t3, skip_ws_pw_space
+    li t3, 10              # '\n'
+    beq t1, t3, skip_ws_pw_space
+    j check_sign
+skip_ws_pw_space:
+    addi s0, s0, 1
+    j skip_ws_pw
+
+check_sign:
+    lb t1, 0(s0)
+    li t3, 45              # '-'
     bne t1, t3, parse_positive
     li t2, 1                # Marca como negativo
     addi s0, s0, 1          # Pula -
-    
+
 parse_positive:
     lb t1, 0(s0)
-    li t3, 48              # '0' = 48
+    li t3, 32
+    beq t1, t3, end_number
+    li t3, 10
+    beq t1, t3, end_number
+    li t3, 48              # '0'
     blt t1, t3, end_number
-    li t3, 57              # '9' = 57
+    li t3, 57              # '9'
     bgt t1, t3, end_number
-    
-    # Converte dígito
+
     addi t1, t1, -48       # -'0'
     li t3, 10
     mul t0, t0, t3
@@ -437,6 +451,18 @@ store_weight:
     
     # Verifica próximo caractere
     lb t1, 0(s0)
+skip_ws_after_weight:
+    li t3, 32
+    beq t1, t3, skip_ws_after_weight_step
+    li t3, 10
+    beq t1, t3, skip_ws_after_weight_step
+    j check_delim
+skip_ws_after_weight_step:
+    addi s0, s0, 1
+    lb t1, 0(s0)
+    j skip_ws_after_weight
+
+check_delim:
     li t3, 44              # ',' = 44
     bne t1, t3, check_neuron_end
     addi s0, s0, 1          # Pula vírgula
@@ -446,8 +472,20 @@ check_neuron_end:
     li t3, 93              # ']' = 93
     bne t1, t3, parse_weight
     addi s0, s0, 1          # Pula ]
-    
-    # Verifica se há mais neurônios
+
+    # Ignora espaços entre neurônios
+skip_ws_between_neurons:
+    lb t1, 0(s0)
+    li t3, 32
+    beq t1, t3, skip_ws_between_neurons_step
+    li t3, 10
+    beq t1, t3, skip_ws_between_neurons_step
+    j check_more_neurons
+skip_ws_between_neurons_step:
+    addi s0, s0, 1
+    j skip_ws_between_neurons
+
+check_more_neurons:
     lb t1, 0(s0)
     li t3, 44              # ',' = 44
     bne t1, t3, check_matrix_end
@@ -456,6 +494,18 @@ check_neuron_end:
     
 check_matrix_end:
     lb t1, 0(s0)
+skip_ws_matrix_end:
+    li t3, 32
+    beq t1, t3, skip_ws_matrix_end_step
+    li t3, 10
+    beq t1, t3, skip_ws_matrix_end_step
+    j final_matrix_check
+skip_ws_matrix_end_step:
+    addi s0, s0, 1
+    lb t1, 0(s0)
+    j skip_ws_matrix_end
+
+final_matrix_check:
     li t3, 93              # ']' = 93
     bne t1, t3, parse_neuron
     
@@ -487,8 +537,18 @@ parse_input_loop:
 parse_input_digit:
     lb t1, 0(s0)
     addi s0, s0, 1
-    
-    # Verifica se é dígito
+
+    # Ignora espaços
+skip_ws_inp:
+    li t2, 32
+    beq t1, t2, skip_ws_inp_step
+    j check_digit_inp
+skip_ws_inp_step:
+    lb t1, 0(s0)
+    addi s0, s0, 1
+    j skip_ws_inp
+
+check_digit_inp:
     li t2, 48              # '0' = 48
     blt t1, t2, save_input
     li t2, 57              # '9' = 57
@@ -520,72 +580,6 @@ parse_input_done:
     addi sp, sp, 12
     ret
 
-# ============================================
-# forward_pass: Executa inferência da rede
-# ============================================
-forward_pass:
-    addi sp, sp, -8
-    sw ra, 0(sp)
-    sw s0, 4(sp)
-    
-    # Obtém número de camadas
-    la t0, num_layers
-    lw s0, 0(t0)
-    
-    # Processa camada 1: activation_0 -> activation_1
-    la a0, activation_0      # Entrada
-    la a1, weights_l1        # Pesos
-    la a2, activation_1      # Saída
-    la t0, layer_sizes
-    lw a3, 0(t0)            # Tamanho entrada
-    lw a4, 4(t0)            # Tamanho saída
-    jal ra, matrix_multiply
-    
-    # Aplica ReLU na activation_1
-    la a0, activation_1
-    la t0, layer_sizes
-    lw a1, 4(t0)
-    jal ra, apply_relu
-    
-    # Se só tem 2 valores na arquitetura (1 transição), para aqui
-    li t0, 2
-    beq s0, t0, forward_done
-    
-    # Processa camada 2: activation_1 -> activation_2
-    la a0, activation_1
-    la a1, weights_l2
-    la a2, activation_2
-    la t0, layer_sizes
-    lw a3, 4(t0)
-    lw a4, 8(t0)
-    jal ra, matrix_multiply
-    
-    # Aplica ReLU na activation_2
-    la a0, activation_2
-    la t0, layer_sizes
-    lw a1, 8(t0)
-    jal ra, apply_relu
-    
-    # Se tem 3 valores na arquitetura (2 transições), para aqui
-    li t0, 3
-    beq s0, t0, forward_done
-    
-    # Processa camada 3: activation_2 -> activation_3
-    la a0, activation_2
-    la a1, weights_l3
-    la a2, activation_3
-    la t0, layer_sizes
-    lw a3, 8(t0)
-    lw a4, 12(t0)
-    jal ra, matrix_multiply
-    
-    # NÃO aplica ReLU na última camada
-    
-forward_done:
-    lw ra, 0(sp)
-    lw s0, 4(sp)
-    addi sp, sp, 8
-    ret
 
 # ============================================
 # matrix_multiply: Multiplicação matriz-vetor

@@ -193,24 +193,28 @@ parse_json_weights:
     # Parse L1 weights
     jal ra, find_l1_weights
     beqz a0, use_default_weights
+    mv s0, a0
     la s1, weights_l1
     jal ra, parse_matrix_weights
     
     # Parse L2 weights  
     jal ra, find_l2_weights
     beqz a0, use_default_weights
+    mv s0, a0
     la s1, weights_l2
     jal ra, parse_matrix_weights
     
     # Parse L3 weights
     jal ra, find_l3_weights
     beqz a0, use_default_weights
+    mv s0, a0
     la s1, weights_l3
     jal ra, parse_matrix_weights
     
     # Parse L4 weights
     jal ra, find_l4_weights
     beqz a0, use_default_weights
+    mv s0, a0
     la s1, weights_l4
     jal ra, parse_matrix_weights
     
@@ -234,7 +238,7 @@ find_l1_weights:
     addi sp, sp, -8
     sw ra, 0(sp)
     sw s0, 4(sp)
-    
+
     la s0, json_buffer
     
 find_l1_loop:
@@ -266,7 +270,7 @@ find_l1_bracket:
     
 find_l1_success:
     addi s0, s0, 1
-    li a0, 1
+    mv a0, s0
     j find_l1_end
     
 find_l1_failed:
@@ -321,7 +325,7 @@ find_l2_bracket:
     
 find_l2_success:
     addi s0, s0, 1
-    li a0, 1
+    mv a0, s0
     j find_l2_end
     
 find_l2_failed:
@@ -373,7 +377,7 @@ find_l3_bracket:
     
 find_l3_success:
     addi s0, s0, 1
-    li a0, 1
+    mv a0, s0
     j find_l3_end
     
 find_l3_failed:
@@ -425,7 +429,7 @@ find_l4_bracket:
     
 find_l4_success:
     addi s0, s0, 1
-    li a0, 1
+    mv a0, s0
     j find_l4_end
     
 find_l4_failed:
@@ -445,27 +449,32 @@ next_l4_char:
 # parse_matrix_weights: Parse pesos para uma matriz
 # ============================================
 parse_matrix_weights:
-    addi sp, sp, -16
+    addi sp, sp, -20
     sw ra, 0(sp)
     sw s0, 4(sp)
     sw s1, 8(sp)
     sw s2, 12(sp)
-    
+    sw s3, 16(sp)
+
     # s0 = posição JSON, s1 = buffer destino
     li s2, 0                # contador
     li t3, 0                # número atual
     li t4, 0                # flag negativo
+    li s3, 1                # profundidade dos colchetes
     
 parse_matrix_loop:
     lb t0, 0(s0)
     beqz t0, matrix_parse_done
-    
+
+    li t1, 91               # '['
+    beq t0, t1, open_bracket
+
     li t1, 93               # ']'
-    beq t0, t1, matrix_parse_done
-    
+    beq t0, t1, close_bracket
+
     li t1, 45               # '-'
     beq t0, t1, set_matrix_negative
-    
+
     li t1, 48
     blt t0, t1, check_matrix_delim
     li t1, 57
@@ -491,6 +500,51 @@ check_matrix_delim:
     li t1, 32
     beq t0, t1, save_matrix_weight
     j next_matrix_char
+
+open_bracket:
+    addi s3, s3, 1
+    j next_matrix_char
+
+close_bracket:
+    beqz t3, adjust_close_depth
+    bnez t4, make_matrix_negative_close
+    j store_close_weight
+
+adjust_close_depth:
+    addi s3, s3, -1
+    beqz s3, matrix_parse_done
+    j next_matrix_char
+
+make_matrix_negative_close:
+    sub t3, zero, t3
+    j store_close_weight
+
+store_close_weight:
+    li t5, 127
+    blt t3, t5, close_check_min
+    li t3, 127
+    j close_store_byte
+
+close_check_min:
+    li t5, -128
+    bgt t3, t5, close_store_byte
+    li t3, -128
+
+close_store_byte:
+    sb t3, 0(s1)
+    addi s1, s1, 1
+    addi s2, s2, 1
+
+    li t5, 1000
+    bge s2, t5, matrix_parse_done
+
+    li t3, 0
+    li t4, 0
+
+    addi s3, s3, -1
+    beqz s3, matrix_parse_done
+    j next_matrix_char
+
     
 save_matrix_weight:
     beqz t3, reset_matrix_vars
@@ -532,12 +586,13 @@ next_matrix_char:
     
 matrix_parse_done:
     mv a0, s2
-    
+
     lw ra, 0(sp)
     lw s0, 4(sp)
     lw s1, 8(sp)
     lw s2, 12(sp)
-    addi sp, sp, 16
+    lw s3, 16(sp)
+    addi sp, sp, 20
     ret
 
 # ============================================

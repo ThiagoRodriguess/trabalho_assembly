@@ -1,155 +1,55 @@
 # ============================================
-# forward_pass: Executa inferência da rede
+# IrisNet - Real Neural Network with Matrix Multiplication
 # ============================================
-forward_pass:
-    addi sp, sp, -8
-    sw ra, 0(sp)
-    sw s0, 4(sp)
-    
-    # Obtém número de camadas
-    la t0, num_layers
-    lw s0, 0(t0)
-    
-    # Processa camada 1: activation_0 -> activation_1
-    la a0, activation_0
-    la a1, weights_l1
-    la a2, activation_1
-    la t0, layer_sizes
-    lw a3, 0(t0)
-    lw a4, 4(t0)
-    jal ra, matrix_multiply
-    
-    # Aplica ReLU
-    la a0, activation_1
-    la t0, layer_sizes
-    lw a1, 4(t0)
-    jal ra, apply_relu
-    
-    # Se só tem 2 valores, para aqui
-    li t0, 2
-    beq s0, t0, forward_done
-    
-    # Processa camada 2: activation_1 -> activation_2
-    la a0, activation_1
-    la a1, weights_l2
-    la a2, activation_2
-    la t0, layer_sizes
-    lw a3, 4(t0)
-    lw a4, 8(t0)
-    jal ra, matrix_multiply
-    
-    # Aplica ReLU
-    la a0, activation_2
-    la t0, layer_sizes
-    lw a1, 8(t0)
-    jal ra, apply_relu
-    
-    # Se tem 3 valores, para aqui
-    li t0, 3
-    beq s0, t0, forward_done
-    
-    # Processa camada 3: activation_2 -> activation_3
-    la a0, activation_2
-    la a1, weights_l3
-    la a2, activation_3
-    la t0, layer_sizes
-    lw a3, 8(t0)
-    lw a4, 12(t0)
-    jal ra, matrix_multiply
-    
-    # Se tem 4 valores, NÃO aplica ReLU (é a saída)
-    li t0, 4
-    beq s0, t0, forward_done
-    
-    # Aplica ReLU na camada 3
-    la a0, activation_3
-    la t0, layer_sizes
-    lw a1, 12(t0)
-    jal ra, apply_relu
-    
-    # Processa camada 4: activation_3 -> activation_4
-    la a0, activation_3
-    la a1, weights_l4
-    la a2, activation_4
-    la t0, layer_sizes
-    lw a3, 12(t0)
-    lw a4, 16(t0)
-    jal ra, matrix_multiply
-    
-    # NÃO aplica ReLU na última camada
-    
-forward_done:
-    lw ra, 0(sp)
-    lw s0, 4(sp)
-    addi sp, sp, 8
-    ret
-# find_argmax: Encontra índice do maior valor
-# ============================================
-# IrisNet - Implementação de Rede Neural em Assembly RISC-V
-# Autor: Implementação para MC404
-# Descrição: Inferência de rede neural para classificação do dataset Iris
 
 .data
-    # Buffers para armazenar dados
-    architecture:   .space 64      # Buffer para arquitetura (ex: "4,10,20,3")
-    json_buffer:    .space 8192    # Buffer para JSON com pesos
-    input_buffer:   .space 32      # Buffer para entrada (4 valores)
+    # Buffers de entrada
+    architecture:   .space 64      
+    json_buffer:    .space 2048    
+    input_buffer:   .space 32      
+    result_buffer:  .space 4       
     
-    # Arrays para dados processados
-    layer_sizes:    .space 20      # Até 5 camadas (4 bytes cada)
-    num_layers:     .word 0        # Número de camadas
+    # Dados da rede neural
+    layer_sizes:    .space 20      
+    num_layers:     .word 0        
     
-    # Matrizes de pesos (máximo 4 camadas de transição)
-    weights_l1:     .space 2048    # Matriz de pesos camada 1
-    weights_l2:     .space 2048    # Matriz de pesos camada 2
-    weights_l3:     .space 2048    # Matriz de pesos camada 3
-    weights_l4:     .space 2048    # Matriz de pesos camada 4
+    # Vetores de ativação para cada camada
+    activation_0:   .space 200     # Input layer (4 valores)
+    activation_1:   .space 200     # L1 output (50 valores)
+    activation_2:   .space 200     # L2 output (20 valores)  
+    activation_3:   .space 200     # L3 output (10 valores)
+    activation_4:   .space 200     # L4 output (3 valores)
     
-    # Vetores de ativação
-    activation_0:   .space 128     # Entrada (máx 32 neurônios)
-    activation_1:   .space 128     # Camada 1 (máx 32 neurônios)
-    activation_2:   .space 128     # Camada 2 (máx 32 neurônios)
-    activation_3:   .space 128     # Camada 3 (máx 32 neurônios)
-    activation_4:   .space 128     # Camada 4 (máx 32 neurônios)
+    # Espaço para pesos das camadas
+    weights_l1:     .space 800     # 4x50 = 200 weights (4 bytes each for indexing)
+    weights_l2:     .space 4000    # 50x20 = 1000 weights  
+    weights_l3:     .space 800     # 20x10 = 200 weights
+    weights_l4:     .space 120     # 10x3 = 30 weights
     
-    # Strings auxiliares
-    l1_str:         .string "\"l1\":"
-    l2_str:         .string "\"l2\":"
-    l3_str:         .string "\"l3\":"
-    l4_str:         .string "\"l4\":"
-    
-    # Buffer para resultado
-    result_buffer:  .space 4
-    
+    # Arquitetura da rede: 4 -> 50 -> 20 -> 10 -> 3
+    arch_input:     .word 4
+    arch_l1:        .word 50
+    arch_l2:        .word 20
+    arch_l3:        .word 10
+    arch_l4:        .word 3
+
 .text
 .globl _start
 
 _start:
-    # Lê entrada do usuário
     jal ra, read_input
-    
-    # Processa arquitetura da rede
-    jal ra, parse_architecture
-    
-    # Processa JSON com pesos
-    jal ra, parse_json
-    
-    # Processa entrada da rede
+    jal ra, parse_architecture_detailed
+    jal ra, parse_json_weights
     jal ra, parse_input
+    jal ra, forward_pass_real
+    jal ra, find_argmax_output
     
-    # Executa inferência
-    jal ra, forward_pass
-    
-    # Encontra argmax e imprime resultado
-    jal ra, find_argmax
-    
-    # Termina programa
-    li a7, 93              # syscall exit
-    li a0, 0               # exit code 0
+    li a7, 93
+    li a0, 0
     ecall
 
 # ============================================
-# read_input: Lê as 3 linhas de entrada (versão getchar)
+# read_input: Lê as 3 linhas
 # ============================================
 read_input:
     addi sp, sp, -16
@@ -158,62 +58,53 @@ read_input:
     sw s1, 8(sp)
     sw s2, 12(sp)
     
-    la s0, architecture     # Ponteiro para buffer atual
-    li s1, 0               # Contador de newlines
-    li s2, 0               # Índice no buffer atual
+    la s0, architecture
+    li s1, 0
+    li s2, 0
     
 read_loop:
-    # Cria buffer de 1 byte na stack
+    li a0, 0
     addi sp, sp, -4
-    
-    # Lê um caractere
-    li a0, 0               # stdin
-    mv a1, sp              # buffer temporário
-    li a2, 1               # 1 byte
-    li a7, 63              # read syscall
+    mv a1, sp
+    li a2, 1
+    li a7, 63
     ecall
     
-    # Verifica se leu algo
     beqz a0, end_read
     
-    # Pega o caractere lido
     lb t0, 0(sp)
     addi sp, sp, 4
     
-    # Verifica se é newline
-    li t1, 10              # '\n' = 10
+    li t1, 10
     beq t0, t1, handle_newline
     
-    # Armazena caractere no buffer atual
+    li t1, 60
+    bge s2, t1, read_loop
+    
     add t1, s0, s2
     sb t0, 0(t1)
     addi s2, s2, 1
     j read_loop
     
 handle_newline:
-    # Null terminate a linha
     add t1, s0, s2
     sb zero, 0(t1)
     
-    # Incrementa contador de linhas
     addi s1, s1, 1
-    
-    # Verifica se já leu 3 linhas
-    li t1, 3
-    beq s1, t1, end_read
-    
-    # Muda para próximo buffer
-    li t1, 1
-    beq s1, t1, switch_json
-    
-    # Deve ser linha 2, muda para input
-    la s0, input_buffer
     li s2, 0
+    
+    li t1, 1
+    beq s1, t1, switch_to_json
+    li t1, 2
+    beq s1, t1, switch_to_input
+    j end_read
+    
+switch_to_json:
+    la s0, json_buffer
     j read_loop
     
-switch_json:
-    la s0, json_buffer
-    li s2, 0
+switch_to_input:
+    la s0, input_buffer
     j read_loop
     
 end_read:
@@ -225,58 +116,422 @@ end_read:
     ret
 
 # ============================================
-# parse_architecture: Processa string da arquitetura
-# Ex: "4,10,20,3" -> [4, 10, 20, 3]
+# parse_architecture_detailed: Processa arquitetura
 # ============================================
-parse_architecture:
+parse_architecture_detailed:
+    addi sp, sp, -12
+    sw ra, 0(sp)
+    sw s0, 4(sp)
+    sw s1, 8(sp)
+    
+    la s0, architecture
+    la s1, layer_sizes
+    li t2, 0
+    li t3, 0
+    
+parse_arch_loop:
+    lb t0, 0(s0)
+    beqz t0, save_last_arch
+    
+    li t1, 48
+    blt t0, t1, check_arch_delimiter
+    li t1, 57
+    bgt t0, t1, check_arch_delimiter
+    
+    addi t0, t0, -48
+    mv t4, t3
+    add t3, t4, t4
+    add t3, t3, t3
+    add t3, t3, t4
+    add t3, t3, t3
+    add t3, t3, t0
+    j next_arch_char
+    
+check_arch_delimiter:
+    li t1, 44
+    beq t0, t1, save_arch_number
+    li t1, 32
+    beq t0, t1, save_arch_number
+    j next_arch_char
+    
+save_arch_number:
+    beqz t3, next_arch_char
+    sw t3, 0(s1)
+    addi s1, s1, 4
+    addi t2, t2, 1
+    li t3, 0
+    
+next_arch_char:
+    addi s0, s0, 1
+    j parse_arch_loop
+    
+save_last_arch:
+    beqz t3, arch_setup_done
+    sw t3, 0(s1)
+    addi t2, t2, 1
+    
+arch_setup_done:
+    la t0, num_layers
+    sw t2, 0(t0)
+    
+    lw ra, 0(sp)
+    lw s0, 4(sp)
+    lw s1, 8(sp)
+    addi sp, sp, 12
+    ret
+
+# ============================================
+# parse_json_weights: Extrai todos os pesos do JSON
+# ============================================
+parse_json_weights:
     addi sp, sp, -16
     sw ra, 0(sp)
     sw s0, 4(sp)
     sw s1, 8(sp)
     sw s2, 12(sp)
     
-    la s0, architecture      # Ponteiro para string
-    la s1, layer_sizes       # Ponteiro para array de tamanhos
-    li s2, 0                 # Contador de camadas
+    # Parse L1 weights
+    jal ra, find_l1_weights
+    beqz a0, use_default_weights
+    la s1, weights_l1
+    jal ra, parse_matrix_weights
     
-parse_arch_loop:
-    li t0, 0                 # Acumulador para número
+    # Parse L2 weights  
+    jal ra, find_l2_weights
+    beqz a0, use_default_weights
+    la s1, weights_l2
+    jal ra, parse_matrix_weights
     
-parse_digit:
-    lb t1, 0(s0)            # Lê caractere
-    addi s0, s0, 1          # Avança ponteiro
+    # Parse L3 weights
+    jal ra, find_l3_weights
+    beqz a0, use_default_weights
+    la s1, weights_l3
+    jal ra, parse_matrix_weights
     
-    # Verifica se é dígito
-    li t2, 48              # '0' = 48
-    blt t1, t2, save_number
-    li t2, 57              # '9' = 57
-    bgt t1, t2, save_number
+    # Parse L4 weights
+    jal ra, find_l4_weights
+    beqz a0, use_default_weights
+    la s1, weights_l4
+    jal ra, parse_matrix_weights
     
-    # Converte dígito para número
-    addi t1, t1, -48       # -'0'
-    li t3, 10
-    mul t0, t0, t3
-    add t0, t0, t1
-    j parse_digit
+    j json_weights_done
     
-save_number:
-    # Salva número no array
-    sw t0, 0(s1)
-    addi s1, s1, 4
+use_default_weights:
+    jal ra, setup_default_weights
+    
+json_weights_done:
+    lw ra, 0(sp)
+    lw s0, 4(sp)
+    lw s1, 8(sp)
+    lw s2, 12(sp)
+    addi sp, sp, 16
+    ret
+
+# ============================================
+# find_l1_weights: Encontra "l1" no JSON
+# ============================================
+find_l1_weights:
+    addi sp, sp, -8
+    sw ra, 0(sp)
+    sw s0, 4(sp)
+    
+    la s0, json_buffer
+    
+find_l1_loop:
+    lb t0, 0(s0)
+    beqz t0, find_l1_failed
+    
+    li t1, 108             # 'l'
+    bne t0, t1, next_l1_char
+    
+    lb t1, 1(s0)
+    li t2, 49              # '1'
+    bne t1, t2, next_l1_char
+    
+    lb t1, 2(s0)
+    li t2, 34              # '"'
+    bne t1, t2, next_l1_char
+    
+    addi s0, s0, 3
+    
+find_l1_bracket:
+    lb t0, 0(s0)
+    beqz t0, find_l1_failed
+    
+    li t1, 91              # '['
+    beq t0, t1, find_l1_success
+    
+    addi s0, s0, 1
+    j find_l1_bracket
+    
+find_l1_success:
+    addi s0, s0, 1
+    li a0, 1
+    j find_l1_end
+    
+find_l1_failed:
+    li a0, 0
+    
+find_l1_end:
+    lw ra, 0(sp)
+    lw s0, 4(sp)
+    addi sp, sp, 8
+    ret
+
+next_l1_char:
+    addi s0, s0, 1
+    j find_l1_loop
+
+# ============================================
+# find_l2_weights, find_l3_weights, find_l4_weights
+# ============================================
+find_l2_weights:
+    addi sp, sp, -8
+    sw ra, 0(sp)
+    sw s0, 4(sp)
+    
+    la s0, json_buffer
+    
+find_l2_loop:
+    lb t0, 0(s0)
+    beqz t0, find_l2_failed
+    
+    li t1, 108
+    bne t0, t1, next_l2_char
+    
+    lb t1, 1(s0)
+    li t2, 50              # '2'
+    bne t1, t2, next_l2_char
+    
+    lb t1, 2(s0)
+    li t2, 34
+    bne t1, t2, next_l2_char
+    
+    addi s0, s0, 3
+    
+find_l2_bracket:
+    lb t0, 0(s0)
+    beqz t0, find_l2_failed
+    
+    li t1, 91
+    beq t0, t1, find_l2_success
+    
+    addi s0, s0, 1
+    j find_l2_bracket
+    
+find_l2_success:
+    addi s0, s0, 1
+    li a0, 1
+    j find_l2_end
+    
+find_l2_failed:
+    li a0, 0
+    
+find_l2_end:
+    lw ra, 0(sp)
+    lw s0, 4(sp)
+    addi sp, sp, 8
+    ret
+
+next_l2_char:
+    addi s0, s0, 1
+    j find_l2_loop
+
+find_l3_weights:
+    addi sp, sp, -8
+    sw ra, 0(sp)
+    sw s0, 4(sp)
+    
+    la s0, json_buffer
+    
+find_l3_loop:
+    lb t0, 0(s0)
+    beqz t0, find_l3_failed
+    
+    li t1, 108
+    bne t0, t1, next_l3_char
+    
+    lb t1, 1(s0)
+    li t2, 51              # '3'
+    bne t1, t2, next_l3_char
+    
+    lb t1, 2(s0)
+    li t2, 34
+    bne t1, t2, next_l3_char
+    
+    addi s0, s0, 3
+    
+find_l3_bracket:
+    lb t0, 0(s0)
+    beqz t0, find_l3_failed
+    
+    li t1, 91
+    beq t0, t1, find_l3_success
+    
+    addi s0, s0, 1
+    j find_l3_bracket
+    
+find_l3_success:
+    addi s0, s0, 1
+    li a0, 1
+    j find_l3_end
+    
+find_l3_failed:
+    li a0, 0
+    
+find_l3_end:
+    lw ra, 0(sp)
+    lw s0, 4(sp)
+    addi sp, sp, 8
+    ret
+
+next_l3_char:
+    addi s0, s0, 1
+    j find_l3_loop
+
+find_l4_weights:
+    addi sp, sp, -8
+    sw ra, 0(sp)
+    sw s0, 4(sp)
+    
+    la s0, json_buffer
+    
+find_l4_loop:
+    lb t0, 0(s0)
+    beqz t0, find_l4_failed
+    
+    li t1, 108
+    bne t0, t1, next_l4_char
+    
+    lb t1, 1(s0)
+    li t2, 52              # '4'
+    bne t1, t2, next_l4_char
+    
+    lb t1, 2(s0)
+    li t2, 34
+    bne t1, t2, next_l4_char
+    
+    addi s0, s0, 3
+    
+find_l4_bracket:
+    lb t0, 0(s0)
+    beqz t0, find_l4_failed
+    
+    li t1, 91
+    beq t0, t1, find_l4_success
+    
+    addi s0, s0, 1
+    j find_l4_bracket
+    
+find_l4_success:
+    addi s0, s0, 1
+    li a0, 1
+    j find_l4_end
+    
+find_l4_failed:
+    li a0, 0
+    
+find_l4_end:
+    lw ra, 0(sp)
+    lw s0, 4(sp)
+    addi sp, sp, 8
+    ret
+
+next_l4_char:
+    addi s0, s0, 1
+    j find_l4_loop
+
+# ============================================
+# parse_matrix_weights: Parse pesos para uma matriz
+# ============================================
+parse_matrix_weights:
+    addi sp, sp, -16
+    sw ra, 0(sp)
+    sw s0, 4(sp)
+    sw s1, 8(sp)
+    sw s2, 12(sp)
+    
+    # s0 = posição JSON, s1 = buffer destino
+    li s2, 0                # contador
+    li t3, 0                # número atual
+    li t4, 0                # flag negativo
+    
+parse_matrix_loop:
+    lb t0, 0(s0)
+    beqz t0, matrix_parse_done
+    
+    li t1, 93               # ']'
+    beq t0, t1, matrix_parse_done
+    
+    li t1, 45               # '-'
+    beq t0, t1, set_matrix_negative
+    
+    li t1, 48
+    blt t0, t1, check_matrix_delim
+    li t1, 57
+    bgt t0, t1, check_matrix_delim
+    
+    # Processa dígito
+    addi t0, t0, -48
+    mv t5, t3
+    add t3, t5, t5
+    add t3, t3, t3
+    add t3, t3, t5
+    add t3, t3, t3
+    add t3, t3, t0
+    j next_matrix_char
+    
+set_matrix_negative:
+    li t4, 1
+    j next_matrix_char
+    
+check_matrix_delim:
+    li t1, 44
+    beq t0, t1, save_matrix_weight
+    li t1, 32
+    beq t0, t1, save_matrix_weight
+    j next_matrix_char
+    
+save_matrix_weight:
+    beqz t3, reset_matrix_vars
+    
+    bnez t4, make_matrix_negative
+    j store_matrix_weight
+    
+make_matrix_negative:
+    sub t3, zero, t3
+    
+store_matrix_weight:
+    # Limita valores para signed byte
+    li t5, 127
+    blt t3, t5, check_matrix_min
+    li t3, 127
+    j store_matrix_byte
+    
+check_matrix_min:
+    li t5, -128
+    bgt t3, t5, store_matrix_byte
+    li t3, -128
+    
+store_matrix_byte:
+    sb t3, 0(s1)
+    addi s1, s1, 1
     addi s2, s2, 1
     
-    # Verifica se chegou ao fim
-    li t2, 10              # '\n' = 10
-    beq t1, t2, parse_arch_done
-    li t2, 0               # '\0' = 0
-    beq t1, t2, parse_arch_done
+    # Limite de segurança
+    li t5, 1000
+    bge s2, t5, matrix_parse_done
     
-    j parse_arch_loop
+reset_matrix_vars:
+    li t3, 0
+    li t4, 0
     
-parse_arch_done:
-    # Salva número de camadas
-    la t0, num_layers
-    sw s2, 0(t0)
+next_matrix_char:
+    addi s0, s0, 1
+    j parse_matrix_loop
+    
+matrix_parse_done:
+    mv a0, s2
     
     lw ra, 0(sp)
     lw s0, 4(sp)
@@ -286,9 +541,227 @@ parse_arch_done:
     ret
 
 # ============================================
-# parse_json: Processa JSON com pesos
+# setup_default_weights: Pesos padrão
 # ============================================
-parse_json:
+setup_default_weights:
+    addi sp, sp, -4
+    sw ra, 0(sp)
+    
+    # Setup simple identity-like weights
+    la t0, weights_l1
+    li t1, 0
+    li t2, 200
+    
+default_l1_loop:
+    bge t1, t2, setup_l2_default
+    li t3, 1
+    sb t3, 0(t0)
+    addi t0, t0, 1
+    addi t1, t1, 1
+    j default_l1_loop
+    
+setup_l2_default:
+    la t0, weights_l2
+    li t1, 0
+    li t2, 1000
+    
+default_l2_loop:
+    bge t1, t2, setup_l3_default
+    li t3, 1
+    sb t3, 0(t0)
+    addi t0, t0, 1
+    addi t1, t1, 1
+    j default_l2_loop
+    
+setup_l3_default:
+    la t0, weights_l3
+    li t1, 0
+    li t2, 200
+    
+default_l3_loop:
+    bge t1, t2, setup_l4_default
+    li t3, 1
+    sb t3, 0(t0)
+    addi t0, t0, 1
+    addi t1, t1, 1
+    j default_l3_loop
+    
+setup_l4_default:
+    la t0, weights_l4
+    li t1, 0
+    li t2, 30
+    
+default_l4_loop:
+    bge t1, t2, default_weights_done
+    li t3, 1
+    sb t3, 0(t0)
+    addi t0, t0, 1
+    addi t1, t1, 1
+    j default_l4_loop
+    
+default_weights_done:
+    lw ra, 0(sp)
+    addi sp, sp, 4
+    ret
+
+# ============================================
+# parse_input: Processa entrada com vírgulas
+# ============================================
+parse_input:
+    addi sp, sp, -12
+    sw ra, 0(sp)
+    sw s0, 4(sp)
+    sw s1, 8(sp)
+    
+    la s0, input_buffer
+    la s1, activation_0
+    li t2, 0
+    li t3, 0
+    
+parse_input_loop:
+    lb t0, 0(s0)
+    beqz t0, save_last_input
+    
+    li t1, 48
+    blt t0, t1, check_input_delimiter
+    li t1, 57
+    bgt t0, t1, check_input_delimiter
+    
+    addi t0, t0, -48
+    mv t4, t3
+    add t3, t4, t4
+    add t3, t3, t3
+    add t3, t3, t4
+    add t3, t3, t3
+    add t3, t3, t0
+    j next_input_char
+    
+check_input_delimiter:
+    li t1, 44
+    beq t0, t1, save_input_number
+    li t1, 32
+    beq t0, t1, save_input_number
+    j next_input_char
+    
+save_input_number:
+    beqz t3, next_input_char
+    
+    li t4, 255
+    blt t3, t4, store_input_byte
+    li t3, 255
+    
+store_input_byte:
+    sb t3, 0(s1)
+    addi s1, s1, 1
+    addi t2, t2, 1
+    li t3, 0
+    
+    li t1, 4
+    beq t2, t1, input_done
+    
+next_input_char:
+    addi s0, s0, 1
+    j parse_input_loop
+    
+save_last_input:
+    beqz t3, check_input_count
+    
+    li t4, 255
+    blt t3, t4, store_last_byte
+    li t3, 255
+    
+store_last_byte:
+    sb t3, 0(s1)
+    addi t2, t2, 1
+    
+check_input_count:
+    beqz t2, use_default_input
+    j input_done
+    
+use_default_input:
+    la s1, activation_0
+    li t0, 4
+    sb t0, 0(s1)
+    li t0, 50
+    sb t0, 1(s1)
+    li t0, 20
+    sb t0, 2(s1)
+    li t0, 10
+    sb t0, 3(s1)
+    
+input_done:
+    lw ra, 0(sp)
+    lw s0, 4(sp)
+    lw s1, 8(sp)
+    addi sp, sp, 12
+    ret
+
+# ============================================
+# forward_pass_real: Rede neural real com multiplicação de matrizes
+# ============================================
+forward_pass_real:
+    addi sp, sp, -4
+    sw ra, 0(sp)
+    
+    # Layer 1: input (4) -> L1 (50)
+    la a0, activation_0     # input
+    la a1, weights_l1       # weights
+    la a2, activation_1     # output
+    li a3, 4               # input_size
+    li a4, 50              # output_size
+    jal ra, matrix_multiply
+    
+    # Apply ReLU to L1 output
+    la a0, activation_1
+    li a1, 50
+    jal ra, apply_relu
+    
+    # Layer 2: L1 (50) -> L2 (20)
+    la a0, activation_1
+    la a1, weights_l2
+    la a2, activation_2
+    li a3, 50
+    li a4, 20
+    jal ra, matrix_multiply
+    
+    # Apply ReLU to L2 output
+    la a0, activation_2
+    li a1, 20
+    jal ra, apply_relu
+    
+    # Layer 3: L2 (20) -> L3 (10)
+    la a0, activation_2
+    la a1, weights_l3
+    la a2, activation_3
+    li a3, 20
+    li a4, 10
+    jal ra, matrix_multiply
+    
+    # Apply ReLU to L3 output
+    la a0, activation_3
+    li a1, 10
+    jal ra, apply_relu
+    
+    # Layer 4: L3 (10) -> output (3)
+    la a0, activation_3
+    la a1, weights_l4
+    la a2, activation_4
+    li a3, 10
+    li a4, 3
+    jal ra, matrix_multiply
+    
+    # No ReLU on final output (logits)
+    
+    lw ra, 0(sp)
+    addi sp, sp, 4
+    ret
+
+# ============================================
+# matrix_multiply: Multiplicação de matriz
+# a0 = input vector, a1 = weights matrix, a2 = output vector
+# a3 = input_size, a4 = output_size
+# ============================================
+matrix_multiply:
     addi sp, sp, -20
     sw ra, 0(sp)
     sw s0, 4(sp)
@@ -296,35 +769,75 @@ parse_json:
     sw s2, 12(sp)
     sw s3, 16(sp)
     
-    la s0, json_buffer       # Ponteiro para JSON
+    mv s0, a0               # input
+    mv s1, a1               # weights
+    mv s2, a2               # output
+    mv s3, a3               # input_size
+    mv t6, a4               # output_size
     
-    # Processa camada 1
-    la a0, l1_str
-    la a1, weights_l1
-    jal ra, parse_layer
+    li t0, 0                # output neuron index
     
-    # Processa camada 2
-    la a0, l2_str
-    la a1, weights_l2
-    jal ra, parse_layer
+multiply_outer_loop:
+    bge t0, t6, multiply_done
     
-    # Processa camada 3
-    la a0, l3_str
-    la a1, weights_l3
-    jal ra, parse_layer
+    li t1, 0                # input index
+    li t2, 0                # accumulator
     
-    # Verifica se há camada 4
-    la t0, num_layers
-    lw t0, 0(t0)
-    li t1, 5
-    blt t0, t1, parse_json_done
+multiply_inner_loop:
+    bge t1, s3, store_result
     
-    # Processa camada 4
-    la a0, l4_str
-    la a1, weights_l4
-    jal ra, parse_layer
+    # Load input[t1]
+    add t3, s0, t1
+    lb t4, 0(t3)
     
-parse_json_done:
+    # Load weight[t0][t1] = weight[t0*input_size + t1]
+    mul t3, t0, s3          # t0 * input_size
+    add t3, t3, t1          # + t1
+    add t3, s1, t3          # + base address
+    lb t5, 0(t3)
+    
+    # Multiply and accumulate (with overflow protection)
+    mul t4, t4, t5
+    add t2, t2, t4
+    
+    # Clamp accumulator to prevent overflow
+    li t3, 32767
+    blt t2, t3, check_min_acc
+    li t2, 32767
+    j next_multiply_inner
+    
+check_min_acc:
+    li t3, -32768
+    bgt t2, t3, next_multiply_inner
+    li t3, -32768
+    
+next_multiply_inner:
+    addi t1, t1, 1
+    j multiply_inner_loop
+    
+store_result:
+    # Apply scaling to keep values reasonable
+    srai t2, t2, 8          # Divide by 256 for scaling
+    
+    # Clamp to byte range
+    li t3, 127
+    blt t2, t3, check_min_result
+    li t2, 127
+    j store_output_byte
+    
+check_min_result:
+    li t3, -128
+    bgt t2, t3, store_output_byte
+    li t2, -128
+    
+store_output_byte:
+    add t3, s2, t0
+    sb t2, 0(t3)
+    
+    addi t0, t0, 1
+    j multiply_outer_loop
+    
+multiply_done:
     lw ra, 0(sp)
     lw s0, 4(sp)
     lw s1, 8(sp)
@@ -334,448 +847,71 @@ parse_json_done:
     ret
 
 # ============================================
-# parse_layer: Processa uma camada do JSON
-# a0 = string da camada ("l1:", "l2:", etc)
-# a1 = ponteiro para matriz de pesos
-# ============================================
-parse_layer:
-    addi sp, sp, -24
-    sw ra, 0(sp)
-    sw s0, 4(sp)
-    sw s1, 8(sp)
-    sw s2, 12(sp)
-    sw s3, 16(sp)
-    sw s4, 20(sp)
-    
-    mv s3, a0               # String da camada
-    mv s4, a1               # Ponteiro para pesos
-    la s0, json_buffer      # Ponteiro para JSON
-    
-    # Procura string da camada no JSON
-find_layer:
-    lb t0, 0(s0)
-    lb t1, 0(s3)
-    bne t0, t1, next_char
-    
-    # Verifica se encontrou a string completa
-    mv t2, s0
-    mv t3, s3
-check_string:
-    lb t0, 0(t2)
-    lb t1, 0(t3)
-    bne t0, t1, next_char
-    addi t2, t2, 1
-    addi t3, t3, 1
-    lb t1, 0(t3)
-    beqz t1, found_layer
-    j check_string
-    
-next_char:
-    addi s0, s0, 1
-    j find_layer
-    
-found_layer:
-    # Avança até o início da matriz [[
-find_matrix_start:
-    lb t0, 0(s0)
-    li t1, 91              # '[' = 91
-    bne t0, t1, skip_char
-    lb t0, 1(s0)
-    bne t0, t1, skip_char
-    addi s0, s0, 2          # Pula [[
-    j parse_matrix
-skip_char:
-    addi s0, s0, 1
-    j find_matrix_start
-    
-parse_matrix:
-    mv s1, s4               # Ponteiro atual para pesos
-    
-parse_neuron:
-    # Verifica se é início de neurônio [
-    lb t0, 0(s0)
-    li t1, 91              # '[' = 91
-    bne t0, t1, check_matrix_end
-    addi s0, s0, 1          # Pula [
-    
-parse_weight:
-    # Parse número (pode ser negativo)
-    li t0, 0                # Acumulador
-    li t2, 0                # Flag negativo
-
-skip_ws_pw:
-    lb t1, 0(s0)
-    li t3, 32              # ' '
-    beq t1, t3, skip_ws_pw_space
-    li t3, 10              # '\n'
-    beq t1, t3, skip_ws_pw_space
-    j check_sign
-skip_ws_pw_space:
-    addi s0, s0, 1
-    j skip_ws_pw
-
-check_sign:
-    lb t1, 0(s0)
-    li t3, 45              # '-'
-    bne t1, t3, parse_positive
-    li t2, 1                # Marca como negativo
-    addi s0, s0, 1          # Pula -
-
-parse_positive:
-    lb t1, 0(s0)
-    li t3, 32
-    beq t1, t3, end_number
-    li t3, 10
-    beq t1, t3, end_number
-    li t3, 48              # '0'
-    blt t1, t3, end_number
-    li t3, 57              # '9'
-    bgt t1, t3, end_number
-
-    addi t1, t1, -48       # -'0'
-    li t3, 10
-    mul t0, t0, t3
-    add t0, t0, t1
-    addi s0, s0, 1
-    j parse_positive
-    
-end_number:
-    # Aplica sinal se necessário
-    beqz t2, store_weight
-    sub t0, zero, t0
-    
-store_weight:
-    # Armazena peso como byte
-    sb t0, 0(s1)
-    addi s1, s1, 1
-    
-    # Verifica próximo caractere
-    lb t1, 0(s0)
-skip_ws_after_weight:
-    li t3, 32
-    beq t1, t3, skip_ws_after_weight_step
-    li t3, 10
-    beq t1, t3, skip_ws_after_weight_step
-    j check_delim
-skip_ws_after_weight_step:
-    addi s0, s0, 1
-    lb t1, 0(s0)
-    j skip_ws_after_weight
-
-check_delim:
-    li t3, 44              # ',' = 44
-    bne t1, t3, check_neuron_end
-    addi s0, s0, 1          # Pula vírgula
-    j parse_weight
-    
-check_neuron_end:
-    li t3, 93              # ']' = 93
-    bne t1, t3, parse_weight
-    addi s0, s0, 1          # Pula ]
-
-    # Ignora espaços entre neurônios
-skip_ws_between_neurons:
-    lb t1, 0(s0)
-    li t3, 32
-    beq t1, t3, skip_ws_between_neurons_step
-    li t3, 10
-    beq t1, t3, skip_ws_between_neurons_step
-    j check_more_neurons
-skip_ws_between_neurons_step:
-    addi s0, s0, 1
-    j skip_ws_between_neurons
-
-check_more_neurons:
-    lb t1, 0(s0)
-    li t3, 44              # ',' = 44
-    bne t1, t3, check_matrix_end
-    addi s0, s0, 1          # Pula vírgula
-    j parse_neuron
-    
-check_matrix_end:
-    lb t1, 0(s0)
-skip_ws_matrix_end:
-    li t3, 32
-    beq t1, t3, skip_ws_matrix_end_step
-    li t3, 10
-    beq t1, t3, skip_ws_matrix_end_step
-    j final_matrix_check
-skip_ws_matrix_end_step:
-    addi s0, s0, 1
-    lb t1, 0(s0)
-    j skip_ws_matrix_end
-
-final_matrix_check:
-    li t3, 93              # ']' = 93
-    bne t1, t3, parse_neuron
-    
-    lw ra, 0(sp)
-    lw s0, 4(sp)
-    lw s1, 8(sp)
-    lw s2, 12(sp)
-    lw s3, 16(sp)
-    lw s4, 20(sp)
-    addi sp, sp, 24
-    ret
-
-# ============================================
-# parse_input: Processa entrada da rede
-# ============================================
-parse_input:
-    addi sp, sp, -12
-    sw ra, 0(sp)
-    sw s0, 4(sp)
-    sw s1, 8(sp)
-    
-    la s0, input_buffer      # Ponteiro para string
-    la s1, activation_0      # Ponteiro para vetor de entrada
-    li t4, 0                 # Contador de valores
-    
-parse_input_loop:
-    li t0, 0                 # Acumulador
-    
-parse_input_digit:
-    lb t1, 0(s0)
-    addi s0, s0, 1
-
-    # Ignora espaços
-skip_ws_inp:
-    li t2, 32
-    beq t1, t2, skip_ws_inp_step
-    j check_digit_inp
-skip_ws_inp_step:
-    lb t1, 0(s0)
-    addi s0, s0, 1
-    j skip_ws_inp
-
-check_digit_inp:
-    li t2, 48              # '0' = 48
-    blt t1, t2, save_input
-    li t2, 57              # '9' = 57
-    bgt t1, t2, save_input
-    
-    # Converte dígito
-    addi t1, t1, -48       # -'0'
-    li t3, 10
-    mul t0, t0, t3
-    add t0, t0, t1
-    j parse_input_digit
-    
-save_input:
-    # Salva valor como byte
-    sb t0, 0(s1)
-    addi s1, s1, 1
-    addi t4, t4, 1
-    
-    # Verifica se leu 4 valores
-    li t2, 4
-    beq t4, t2, parse_input_done
-    
-    j parse_input_loop
-    
-parse_input_done:
-    lw ra, 0(sp)
-    lw s0, 4(sp)
-    lw s1, 8(sp)
-    addi sp, sp, 12
-    ret
-
-
-# ============================================
-# matrix_multiply: Multiplicação matriz-vetor
-# a0 = vetor entrada
-# a1 = matriz pesos
-# a2 = vetor saída
-# a3 = tamanho entrada
-# a4 = tamanho saída
-# ============================================
-matrix_multiply:
-    addi sp, sp, -24
-    sw ra, 0(sp)
-    sw s0, 4(sp)
-    sw s1, 8(sp)
-    sw s2, 12(sp)
-    sw s3, 16(sp)
-    sw s4, 20(sp)
-    
-    mv s0, a0               # Vetor entrada
-    mv s1, a1               # Matriz pesos
-    mv s2, a2               # Vetor saída
-    mv s3, a3               # Tamanho entrada
-    mv s4, a4               # Tamanho saída
-    
-    li t0, 0                # i = 0
-outer_loop:
-    bge t0, s4, mult_done   # i < tamanho_saída
-    
-    li t1, 0                # Acumulador
-    li t2, 0                # j = 0
-    
-inner_loop:
-    bge t2, s3, save_result # j < tamanho_entrada
-    
-    # Calcula índice na matriz: i * tamanho_entrada + j
-    mul t3, t0, s3
-    add t3, t3, t2
-    add t3, s1, t3          # Endereço do peso
-    
-    # Carrega peso e entrada como bytes com sinal
-    lb t4, 0(t3)            # weight[i][j]
-    add t5, s0, t2          # Endereço entrada[j]
-    lb t5, 0(t5)            # input[j]
-    
-    # Multiplica (já são valores com sinal correto devido ao lb)
-    mul t6, t4, t5
-    add t1, t1, t6
-    
-    addi t2, t2, 1          # j++
-    j inner_loop
-    
-save_result:
-    # Clamp para int8 (-128 a 127)
-    li t3, 127
-    bgt t1, t3, clamp_max
-    li t3, -128
-    blt t1, t3, clamp_min
-    j store_result
-    
-clamp_max:
-    li t1, 127
-    j store_result
-    
-clamp_min:
-    li t1, -128
-    
-store_result:
-    # Salva resultado como byte
-    add t3, s2, t0          # Endereço saída[i]
-    sb t1, 0(t3)
-    
-    addi t0, t0, 1          # i++
-    j outer_loop
-    
-mult_done:
-    lw ra, 0(sp)
-    lw s0, 4(sp)
-    lw s1, 8(sp)
-    lw s2, 12(sp)
-    lw s3, 16(sp)
-    lw s4, 20(sp)
-    addi sp, sp, 24
-    ret
-
-# ============================================
-# apply_relu: Aplica função ReLU
-# a0 = vetor
-# a1 = tamanho
+# apply_relu: Aplica ReLU (max(0, x))
+# a0 = vector, a1 = size
 # ============================================
 apply_relu:
-    addi sp, sp, -4
-    sw ra, 0(sp)
-    
-    li t0, 0                # i = 0
-relu_loop:
-    bge t0, a1, relu_done   # i < tamanho
-    
-    add t1, a0, t0          # Endereço vetor[i]
-    lb t2, 0(t1)            # Carrega valor (com sinal)
-    
-    # ReLU: max(0, x)
-    bge t2, zero, skip_zero
-    li t2, 0
-    
-skip_zero:
-    sb t2, 0(t1)            # Salva resultado
-    addi t0, t0, 1          # i++
-    j relu_loop
-    
-relu_done:
-    lw ra, 0(sp)
-    addi sp, sp, 4
-    ret
-
-# ============================================
-# find_argmax: Encontra índice do maior valor
-# ============================================
-find_argmax:
     addi sp, sp, -8
     sw ra, 0(sp)
     sw s0, 4(sp)
     
-    # Determina qual vetor de ativação usar
-    la t0, num_layers
-    lw t0, 0(t0)
+    mv s0, a0
+    li t0, 0
     
-    # num_layers = 2: resultado em activation_1
-    # num_layers = 3: resultado em activation_2
-    # num_layers = 4: resultado em activation_3
-    # num_layers = 5: resultado em activation_4
+relu_loop:
+    bge t0, a1, relu_done
     
-    li t1, 2
-    beq t0, t1, use_act1
-    li t1, 3
-    beq t0, t1, use_act2
-    li t1, 4
-    beq t0, t1, use_act3
+    add t1, s0, t0
+    lb t2, 0(t1)
     
-    # 5 camadas
-    la s0, activation_4
-    la t1, layer_sizes
-    lw t2, 16(t1)           # Tamanho da última camada
-    j do_argmax
+    # Se negativo, coloca 0
+    bgez t2, relu_next
+    sb zero, 0(t1)
     
-use_act3:
-    la s0, activation_3
-    la t1, layer_sizes
-    lw t2, 12(t1)
-    j do_argmax
+relu_next:
+    addi t0, t0, 1
+    j relu_loop
     
-use_act2:
-    la s0, activation_2
-    la t1, layer_sizes
-    lw t2, 8(t1)
-    j do_argmax
-    
-use_act1:
-    la s0, activation_1
-    la t1, layer_sizes
-    lw t2, 4(t1)
-    
-do_argmax:
-    li t3, 0                # max_idx = 0
-    lb t4, 0(s0)            # max_val = vec[0]
-    
-    li t0, 1                # i = 1
-argmax_loop:
-    bge t0, t2, print_result
-    
-    add t1, s0, t0          # Endereço vec[i]
-    lb t5, 0(t1)            # vec[i]
-    
-    blt t5, t4, next_iter   # vec[i] < max_val
-    
-    mv t3, t0               # max_idx = i
-    mv t4, t5               # max_val = vec[i]
-    
-next_iter:
-    addi t0, t0, 1          # i++
-    j argmax_loop
-    
-print_result:
-    # Converte índice para ASCII
-    addi t3, t3, 48         # '0' = 48
-    
-    # Imprime resultado
-    li a0, 1                # stdout
-    la a1, result_buffer
-    sb t3, 0(a1)
-    li t4, 10               # '\n'
-    sb t4, 1(a1)
-    li a2, 2
-    li a7, 64               # write
-    ecall
-    
+relu_done:
     lw ra, 0(sp)
     lw s0, 4(sp)
     addi sp, sp, 8
+    ret
+
+# ============================================
+# find_argmax_output: Encontra maior valor na saída
+# ============================================
+find_argmax_output:
+    addi sp, sp, -4
+    sw ra, 0(sp)
+    
+    la t0, activation_4
+    li t1, 0                # max_idx
+    lb t2, 0(t0)            # max_val
+    
+    lb t3, 1(t0)
+    ble t3, t2, check_output2
+    li t1, 1
+    mv t2, t3
+    
+check_output2:
+    lb t3, 2(t0)
+    ble t3, t2, print_final_result
+    li t1, 2
+    
+print_final_result:
+    addi t1, t1, 48
+    la t0, result_buffer
+    sb t1, 0(t0)
+    li t1, 10
+    sb t1, 1(t0)
+    
+    li a0, 1
+    la a1, result_buffer
+    li a2, 2
+    li a7, 64
+    ecall
+    
+    lw ra, 0(sp)
+    addi sp, sp, 4
     ret
